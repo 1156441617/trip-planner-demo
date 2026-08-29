@@ -8,10 +8,8 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&family=Playfair+Display+SC:wght@600;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
-<script>
-  window._AMapSecurityConfig = { securityJsCode: "34c9d7ae423ce222744e5db0a7120c56" };
-</script>
-<script src="https://webapi.amap.com/maps?v=2.0&key=5b3217284873669fc9c0a6ed2d791837&plugin=AMap.Geocoder,AMap.Polyline"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -992,8 +990,8 @@ function render(p){
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v14l-6 3-6-3-6 3zM9 3v14M15 6v14"/></svg>
             路程图
           </div>
-          <div id="map-Day${day.day}" class="relative overflow-hidden rounded-lg border border-white/5 flex items-center justify-center" style="height:280px;background:#0a1525">
-            <div class="text-white/20 text-xs animate-pulse">🗺️ 地图加载中…</div>
+          <div id="map-Day${day.day}" class="relative overflow-hidden rounded-lg border border-white/5" style="height:280px;background:#0a1525">
+            <div class="absolute inset-0 flex items-center justify-center text-white/20 text-xs animate-pulse z-[1000]">🗺️ 地图加载中…</div>
           </div>
           <div class="mt-2 flex items-center justify-between text-[10px] text-white/30">
             <span>${items.length} 个站点</span>
@@ -1020,18 +1018,10 @@ function render(p){
     </div>`;
   }).join("");
 
-  // ===== 初始化高德地图 =====
-  console.log("[render] done, AMap typeof:", typeof AMap, "days:", p.days?.length);
-  if (p.days && p.days.length > 0) {
-    // 延迟确保 DOM 渲染 + SDK ready
-    setTimeout(() => {
-      if (typeof AMap === "undefined") {
-        console.warn("[map] AMap still not ready, retry in 500ms");
-        setTimeout(() => initMaps(p), 500);
-      } else {
-        initMaps(p);
-      }
-    }, 300);
+  // ===== 初始化 Leaflet 地图 =====
+  console.log("[render] done, L typeof:", typeof L, "days:", p.days?.length);
+  if (p.days && p.days.length > 0 && typeof L !== "undefined") {
+    setTimeout(() => initMaps(p), 300);
   }
 }
 
@@ -1041,11 +1031,22 @@ function initMaps(p) {
   });
 }
 
-// 初始化单日地图
-function initDayMap(day) {
+// Nominatim geocoding（OpenStreetMap 免费 API，全球通用）
+async function geocodeAddress(address) {
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+  const res = await fetch(url, { headers: { "Accept-Language": "zh,en" } });
+  const data = await res.json();
+  if (data && data[0]) {
+    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  }
+  return null;
+}
+
+// 初始化单日地图（Leaflet + OpenStreetMap）
+async function initDayMap(day) {
   const container = document.getElementById(`map-Day${day.day}`);
   if (!container) { console.warn(`map container not found: Day${day.day}`); return; }
-  if (typeof AMap === "undefined") { console.warn("AMap SDK not loaded"); container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地图SDK未加载</div>'; return; }
+  if (typeof L === "undefined") { container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地图SDK未加载</div>'; return; }
 
   // 提取当天有 location 的地点
   const locations = (day.items || [])
@@ -1065,94 +1066,84 @@ function initDayMap(day) {
     return;
   }
 
-  // 创建地图
-  const map = new AMap.Map(container, {
+  // 创建 Leaflet 地图（深色底图）
+  const map = L.map(container, {
     zoom: 12,
-    center: [116.397428, 39.90923],
-    mapStyle: "amap://styles/dark",
-    resizeEnable: true,
+    center: [39.90923, 116.397428],
+    scrollWheelZoom: false,
+    zoomControl: false,
   });
 
-  const geocoder = new AMap.Geocoder({ city: "全国" });
+  // 深色瓦片层
+  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap © CARTO",
+    subdomains: "abcd",
+  }).addTo(map);
 
-  // 用 Promise 包装 geocoding，等全部完成
-  const geocodePromises = locations.map((loc, idx) => {
-    return new Promise((resolve) => {
-      geocoder.getLocation(loc.name, (status, result) => {
-        if (status === "complete" && result.geocodes && result.geocodes[0]) {
-          const gc = result.geocodes[0];
-          const lnglat = [gc.location.getLng(), gc.location.getLat()];
-          console.log(`[Day${day.day}] geocoded OK: "${loc.name}" →`, lnglat);
-          resolve({ loc, idx, lnglat });
-        } else {
-          console.warn(`[Day${day.day}] geocode FAILED: "${loc.name}" status=${status}`);
-          resolve(null);
-        }
-      });
-    });
-  });
+  // 逐个 geocoding（Nominatim 限速，1 次/秒）
+  const points = [];
+  for (let i = 0; i < locations.length; i++) {
+    const loc = locations[i];
+    const latlng = await geocodeAddress(loc.name);
+    if (latlng) {
+      console.log(`[Day${day.day}] geocoded OK: "${loc.name}" →`, latlng);
+      points.push({ loc, idx: i, latlng });
 
-  // 全部 geocoding 完成后画点 + 连线
-  Promise.all(geocodePromises).then((results) => {
-    const points = results.filter((r) => r && r.lnglat);
-    console.log(`[Day${day.day}] geocoded ${points.length}/${locations.length} points`);
-
-    if (points.length === 0) {
-      container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地点解析失败</div>';
-      return;
-    }
-
-    const markers = [];
-
-    points.forEach(({ loc, idx, lnglat }) => {
-      const marker = new AMap.Marker({
-        position: lnglat,
-        content: `<div style="
+      // 自定义图标
+      const icon = L.divIcon({
+        html: `<div style="
           background:${loc.color};
-          width:24px;height:24px;
+          width:28px;height:28px;
           border-radius:50% 50% 50% 0;
           transform:rotate(-45deg);
           border:2px solid #0c1a2e;
-          box-shadow:0 2px 6px rgba(0,0,0,0.4);
+          box-shadow:0 2px 8px rgba(0,0,0,0.5);
           display:flex;align-items:center;justify-content:center;
-          font-size:11px;font-weight:bold;color:#fff;
-        ">${idx + 1}</div>`,
-        offset: new AMap.Pixel(-12, -24),
-        map: map,
+          font-size:12px;font-weight:bold;color:#fff;
+        ">${i + 1}</div>`,
+        className: "custom-marker",
+        iconSize: [28, 28],
+        iconAnchor: [14, 28],
       });
 
-      marker.on("click", () => {
-        const info = new AMap.InfoWindow({
-          content: `<div style="padding:6px 10px;font-size:12px;line-height:1.6">
-            <b>${loc.title}</b><br>
-            <span style="color:${loc.color}">${loc.type}</span> ${loc.time}<br>
-            📍 ${loc.name}
-          </div>`,
-          offset: new AMap.Pixel(0, -20),
-        });
-        info.open(map, lnglat);
-      });
-
-      markers.push(marker);
-    });
-
-    // 画连线
-    if (markers.length >= 2) {
-      const path = markers.map((m) => m.getPosition());
-      new AMap.Polyline({
-        path: path,
-        strokeColor: "#ffd93d",
-        strokeWeight: 2,
-        strokeOpacity: 0.6,
-        strokeStyle: "dashed",
-        map: map,
-      });
+      const marker = L.marker(latlng, { icon }).addTo(map);
+      marker.bindPopup(`<div style="font-size:12px;line-height:1.6">
+        <b>${loc.title}</b><br>
+        <span style="color:${loc.color}">${loc.type}</span> ${loc.time}<br>
+        📍 ${loc.name}
+      </div>`);
+    } else {
+      console.warn(`[Day${day.day}] geocode FAILED: "${loc.name}"`);
     }
+    // Nominatim 限速：间隔 1.1 秒
+    if (i < locations.length - 1) await new Promise(r => setTimeout(r, 1100));
+  }
 
-    // 自动调整视野
-    map.setFitView(markers, false, [40, 40, 40, 40]);
-    console.log(`[Day${day.day}] map ready, fitView done`);
-  });
+  console.log(`[Day${day.day}] geocoded ${points.length}/${locations.length} points`);
+
+  if (points.length === 0) {
+    container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地点解析失败</div>';
+    return;
+  }
+
+  // 画连线
+  if (points.length >= 2) {
+    const latlngs = points.map(p => p.latlng);
+    L.polyline(latlngs, {
+      color: "#ffd93d",
+      weight: 2,
+      opacity: 0.6,
+      dashArray: "8 6",
+    }).addTo(map);
+  }
+
+  // 自动调整视野
+  const group = L.featureGroup(points.map(p => L.marker(p.latlng)));
+  map.fitBounds(group.getBounds(), { padding: [40, 40] });
+  console.log(`[Day${day.day}] map ready, fitBounds done`);
+
+  // 清除 loading 占位
+  container.querySelector(".animate-pulse")?.remove();
 }
 
 function reset(){
