@@ -917,11 +917,34 @@ function render(p){
   // days - 带路线圆点 + 连线
   const daysBox = document.getElementById("daysContainer");
   daysBox.innerHTML = (p.days||[]).map((day, di)=>{
-    const dotsSVG = (day.items||[]).map((it, idx)=>{
+    const items = day.items || [];
+    const itemHeight = 88;
+    const mapH = Math.max(200, items.length * itemHeight + 40);
+    const dotsSVG = items.map((it, idx)=>{
       const c = TYPE_COLORS[it.type] || "#ff6b6b";
-      return `<circle cx="40" cy="${40 + idx*90}" r="8" fill="#0c1a2e" stroke="${c}" stroke-width="3"/>`;
+      return `<circle cx="40" cy="${40 + idx*itemHeight}" r="8" fill="#0c1a2e" stroke="${c}" stroke-width="3"/>`;
     }).join("");
-    const pathD = (day.items||[]).map((_,idx)=>(idx===0?"M":"L") + `40 ${40+idx*90}`).join(" ");
+    const pathD = items.map((_,idx)=>(idx===0?"M":"L") + `40 ${40+idx*itemHeight}`).join(" ");
+
+    // 右侧路程图 SVG —— 风格化路线节点图
+    const routeNodes = items.map((it, idx)=>{
+      const c = TYPE_COLORS[it.type] || "#ff6b6b";
+      const y = 30 + idx * 52;
+      const label = (it.title||"").length > 8 ? (it.title||"").slice(0,7)+"…" : (it.title||"");
+      const time = (it.time||"").split("-")[0] || "";
+      return `
+        <g style="animation:fadeIn .4s ${idx*0.1}s both">
+          <circle cx="20" cy="${y}" r="6" fill="${c}" opacity="0.9"/>
+          <circle cx="20" cy="${y}" r="11" fill="none" stroke="${c}" stroke-width="1.5" opacity="0.3"/>
+          <text x="36" y="${y+4}" font-size="10" fill="#e0e0e0" font-family="system-ui">${label}</text>
+          <text x="36" y="${y+16}" font-size="8" fill="rgba(255,255,255,0.4)" font-family="system-ui">${time}</text>
+        </g>`;
+    }).join("");
+    const routePath = items.length > 1
+      ? items.map((_,idx)=> (idx===0?"M":"L") + `20 ${30+idx*52}`).join(" ")
+      : "";
+    const routeSVGHeight = Math.max(120, items.length * 52 + 40);
+
     return `
     <div class="card-dark overflow-hidden animate-slide-up" style="animation-delay:${di*0.12}s">
       <div class="flex items-center gap-3 px-5 py-4 border-b border-white/5" style="background:linear-gradient(90deg,rgba(255,107,107,.15),transparent)">
@@ -931,32 +954,56 @@ function render(p){
           <div class="text-sm text-white/60 font-hand text-base">${day.theme||""}</div>
         </div>
       </div>
-      <div class="relative p-5 pl-16">
-        <!-- 左侧 SVG 路线 -->
-        <svg class="absolute left-5 top-3 route-svg draw" width="30" height="${Math.max(100,(day.items?.length||0)*90+20)}" style="animation-delay:${di*0.12+0.3}s">
-          <path d="${pathD}" stroke="#ffd93d" stroke-width="2" fill="none"/>
-          ${dotsSVG}
-        </svg>
-
-        <div class="space-y-5">
-          ${(day.items||[]).map((it, ii)=>{
-            const c = TYPE_COLORS[it.type] || "#ff6b6b";
-            return `
-            <div class="hover:translate-x-1 transition-transform duration-200" style="animation-delay:${ii*0.08}s">
-              <div class="flex items-center gap-2 mb-1">
-                <span class="inline-block w-2 h-2 rounded-full" style="background:${c}"></span>
-                <span class="text-[11px] uppercase tracking-wider font-bold" style="color:${c}">${TYPE_ICONS[it.type]||"•"} ${it.type||""}</span>
-                <span class="text-xs text-white/30 ml-auto">${it.time||""}</span>
-              </div>
-              <div class="text-white font-semibold leading-tight">${it.title||""}</div>
-              <div class="text-xs text-white/50 flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                ${it.location?`<span>📍 ${it.location}</span>`:""}
-                ${it.duration?`<span>⏱ ${it.duration}</span>`:""}
-                ${it.cost?`<span class="text-mustard">💰 ${it.cost}</span>`:""}
-              </div>
-              ${it.tips?`<div class="mt-2 text-[12px] bg-sky/10 border-l-2 border-sky px-3 py-1.5 rounded-r-md text-white/80 leading-relaxed">💡 ${it.tips}</div>`:""}
-            </div>`;
-          }).join("")}
+      <div class="grid grid-cols-1 lg:grid-cols-[1fr_220px] gap-0">
+        <!-- 左侧：行程列表 -->
+        <div class="relative p-5 pl-16 border-r border-white/5">
+          <svg class="absolute left-5 top-3 route-svg draw" width="30" height="${mapH}" style="animation-delay:${di*0.12+0.3}s">
+            <path d="${pathD}" stroke="#ffd93d" stroke-width="2" fill="none"/>
+            ${dotsSVG}
+          </svg>
+          <div class="space-y-5">
+            ${items.map((it, ii)=>{
+              const c = TYPE_COLORS[it.type] || "#ff6b6b";
+              return `
+              <div class="hover:translate-x-1 transition-transform duration-200" style="animation-delay:${ii*0.08}s">
+                <div class="flex items-center gap-2 mb-1">
+                  <span class="inline-block w-2 h-2 rounded-full" style="background:${c}"></span>
+                  <span class="text-[11px] uppercase tracking-wider font-bold" style="color:${c}">${TYPE_ICONS[it.type]||"•"} ${it.type||""}</span>
+                  <span class="text-xs text-white/30 ml-auto">${it.time||""}</span>
+                </div>
+                <div class="text-white font-semibold leading-tight">${it.title||""}</div>
+                <div class="text-xs text-white/50 flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                  ${it.location?`<span>📍 ${it.location}</span>`:""}
+                  ${it.duration?`<span>⏱ ${it.duration}</span>`:""}
+                  ${it.cost?`<span class="text-mustard">💰 ${it.cost}</span>`:""}
+                </div>
+                ${it.tips?`<div class="mt-2 text-[12px] bg-sky/10 border-l-2 border-sky px-3 py-1.5 rounded-r-md text-white/80 leading-relaxed">💡 ${it.tips}</div>`:""}
+              </div>`;
+            }).join("")}
+          </div>
+        </div>
+        <!-- 右侧：路程图 -->
+        <div class="bg-gradient-to-b from-[#0a1525] to-[#0c1a2e] p-4 flex flex-col">
+          <div class="text-[11px] uppercase tracking-wider font-bold text-white/40 mb-3 flex items-center gap-1.5">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            路程图
+          </div>
+          <div class="flex-1 relative overflow-hidden rounded-lg border border-white/5" style="background:radial-gradient(ellipse at 30% 20%, rgba(255,217,61,0.06), transparent 60%)">
+            <svg width="100%" height="${routeSVGHeight}" viewBox="0 0 220 ${routeSVGHeight}" preserveAspectRatio="xMidYMin meet" style="animation:fadeIn .5s ${di*0.12+0.4}s both">
+              <!-- 路线连线 -->
+              ${routePath ? `<path d="${routePath}" stroke="#ffd93d" stroke-width="2" fill="none" stroke-dasharray="4 3" opacity="0.5"/>` : ""}
+              ${routeNodes}
+              <!-- 起终点标记 -->
+              ${items.length > 0 ? `
+                <text x="6" y="20" font-size="8" fill="#6bcb77" font-family="system-ui" font-weight="bold">START</text>
+                <text x="6" y="${routeSVGHeight-8}" font-size="8" fill="#ff6b6b" font-family="system-ui" font-weight="bold">END</text>
+              ` : ""}
+            </svg>
+          </div>
+          <div class="mt-2 flex items-center justify-between text-[10px] text-white/30">
+            <span>${items.length} 个站点</span>
+            <span>≈ ${items.filter(i=>i.duration).length} 段</span>
+          </div>
         </div>
       </div>
     </div>`;
