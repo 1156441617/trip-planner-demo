@@ -8,6 +8,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&family=Playfair+Display+SC:wght@600;900&display=swap" rel="stylesheet">
 <script src="https://cdn.tailwindcss.com"></script>
+<script src="https://webapi.amap.com/maps?v=2.0&key=5b3217284873669fc9c0a6ed2d791837&plugin=AMap.Geocoder,AMap.Polyline"></script>
 <script>
 tailwind.config = {
   theme: {
@@ -982,27 +983,17 @@ function render(p){
             }).join("")}
           </div>
         </div>
-        <!-- 右侧：路程图 -->
+        <!-- 右侧：高德地图 -->
         <div class="bg-gradient-to-b from-[#0a1525] to-[#0c1a2e] p-4 flex flex-col">
           <div class="text-[11px] uppercase tracking-wider font-bold text-white/40 mb-3 flex items-center gap-1.5">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 12h18M3 6h18M3 18h18"/></svg>
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v14l-6 3-6-3-6 3zM9 3v14M15 6v14"/></svg>
             路程图
           </div>
-          <div class="flex-1 relative overflow-hidden rounded-lg border border-white/5" style="background:radial-gradient(ellipse at 30% 20%, rgba(255,217,61,0.06), transparent 60%)">
-            <svg width="100%" height="${routeSVGHeight}" viewBox="0 0 220 ${routeSVGHeight}" preserveAspectRatio="xMidYMin meet" style="animation:fadeIn .5s ${di*0.12+0.4}s both">
-              <!-- 路线连线 -->
-              ${routePath ? `<path d="${routePath}" stroke="#ffd93d" stroke-width="2" fill="none" stroke-dasharray="4 3" opacity="0.5"/>` : ""}
-              ${routeNodes}
-              <!-- 起终点标记 -->
-              ${items.length > 0 ? `
-                <text x="6" y="20" font-size="8" fill="#6bcb77" font-family="system-ui" font-weight="bold">START</text>
-                <text x="6" y="${routeSVGHeight-8}" font-size="8" fill="#ff6b6b" font-family="system-ui" font-weight="bold">END</text>
-              ` : ""}
-            </svg>
+          <div id="map-Day${day.day}" class="flex-1 relative overflow-hidden rounded-lg border border-white/5" style="min-height:200px;background:#0a1525">
           </div>
           <div class="mt-2 flex items-center justify-between text-[10px] text-white/30">
             <span>${items.length} 个站点</span>
-            <span>≈ ${items.filter(i=>i.duration).length} 段</span>
+            <span class="text-mustard">📍 真实地图</span>
           </div>
         </div>
       </div>
@@ -1024,6 +1015,104 @@ function render(p){
       <div class="text-sm text-white/60 leading-relaxed">${c.content||""}</div>
     </div>`;
   }).join("");
+
+  // ===== 初始化高德地图 =====
+  if (typeof AMap !== "undefined" && p.days) {
+    p.days.forEach((day) => {
+      initDayMap(day);
+    });
+  }
+}
+
+// 初始化单日地图
+function initDayMap(day) {
+  const container = document.getElementById(`map-Day${day.day}`);
+  if (!container || !AMap) return;
+
+  // 提取当天有 location 的地点
+  const locations = (day.items || [])
+    .filter((it) => it.location && it.location.trim())
+    .map((it) => ({
+      name: it.location.trim(),
+      title: it.title || "",
+      time: (it.time || "").split("-")[0],
+      type: it.type || "",
+      color: TYPE_COLORS[it.type] || "#ff6b6b",
+    }));
+
+  if (locations.length === 0) {
+    container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">暂无地点数据</div>';
+    return;
+  }
+
+  // 创建地图（先默认北京，后面 fitView 自动调整）
+  const map = new AMap.Map(container, {
+    zoom: 12,
+    center: [116.397428, 39.90923],
+    mapStyle: "amap://styles/dark",
+    resizeEnable: true,
+  });
+
+  const geocoder = new AMap.Geocoder({ city: "全国" });
+  const markers = [];
+
+  locations.forEach((loc, idx) => {
+    geocoder.getLocation(loc.name, (status, result) => {
+      if (status === "complete" && result.geocodes && result.geocodes[0]) {
+        const lnglat = [result.geocodes[0].location.getLng(), result.geocodes[0].location.getLat()];
+
+        // 自定义标记
+        const marker = new AMap.Marker({
+          position: lnglat,
+          content: `<div style="
+            background:${loc.color};
+            width:24px;height:24px;
+            border-radius:50% 50% 50% 0;
+            transform:rotate(-45deg);
+            border:2px solid #0c1a2e;
+            box-shadow:0 2px 6px rgba(0,0,0,0.4);
+            display:flex;align-items:center;justify-content:center;
+            font-size:11px;font-weight:bold;color:#fff;
+          ">${idx + 1}</div>`,
+          offset: new AMap.Pixel(-12, -24),
+          map: map,
+        });
+
+        // 信息窗
+        marker.on("click", () => {
+          const info = new AMap.InfoWindow({
+            content: `<div style="padding:6px 10px;font-size:12px;line-height:1.6">
+              <b>${loc.title}</b><br>
+              <span style="color:${loc.color}">${loc.type}</span> ${loc.time}<br>
+              📍 ${loc.name}
+            </div>`,
+            offset: new AMap.Pixel(0, -20),
+          });
+          info.open(map, lnglat);
+        });
+
+        markers.push(marker);
+
+        // 画连线
+        if (markers.length >= 2) {
+          const path = markers.map((m) => m.getPosition());
+          new AMap.Polyline({
+            path: path,
+            strokeColor: "#ffd93d",
+            strokeWeight: 2,
+            strokeOpacity: 0.6,
+            strokeStyle: "dashed",
+            map: map,
+          });
+        }
+
+        // 全部 geocoding 完成后自动调整视野
+        if (markers.length === locations.length) {
+          map.setFitView(markers, false, [40, 40, 40, 40]);
+        }
+      }
+    });
+  });
 }
 
 function reset(){
