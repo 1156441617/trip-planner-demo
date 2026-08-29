@@ -989,7 +989,7 @@ function render(p){
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v14l-6 3-6-3-6 3zM9 3v14M15 6v14"/></svg>
             路程图
           </div>
-          <div id="map-Day${day.day}" class="flex-1 relative overflow-hidden rounded-lg border border-white/5" style="min-height:200px;background:#0a1525">
+          <div id="map-Day${day.day}" class="relative overflow-hidden rounded-lg border border-white/5" style="height:280px;background:#0a1525">
           </div>
           <div class="mt-2 flex items-center justify-between text-[10px] text-white/30">
             <span>${items.length} 个站点</span>
@@ -1027,7 +1027,8 @@ function render(p){
 // 初始化单日地图
 function initDayMap(day) {
   const container = document.getElementById(`map-Day${day.day}`);
-  if (!container || !AMap) return;
+  if (!container) { console.warn(`map container not found: Day${day.day}`); return; }
+  if (typeof AMap === "undefined") { console.warn("AMap SDK not loaded"); container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地图SDK未加载</div>'; return; }
 
   // 提取当天有 location 的地点
   const locations = (day.items || [])
@@ -1040,12 +1041,14 @@ function initDayMap(day) {
       color: TYPE_COLORS[it.type] || "#ff6b6b",
     }));
 
+  console.log(`[Day${day.day}] locations to geocode:`, locations.map(l=>l.name));
+
   if (locations.length === 0) {
     container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">暂无地点数据</div>';
     return;
   }
 
-  // 创建地图（先默认北京，后面 fitView 自动调整）
+  // 创建地图
   const map = new AMap.Map(container, {
     zoom: 12,
     center: [116.397428, 39.90923],
@@ -1054,64 +1057,84 @@ function initDayMap(day) {
   });
 
   const geocoder = new AMap.Geocoder({ city: "全国" });
-  const markers = [];
 
-  locations.forEach((loc, idx) => {
-    geocoder.getLocation(loc.name, (status, result) => {
-      if (status === "complete" && result.geocodes && result.geocodes[0]) {
-        const lnglat = [result.geocodes[0].location.getLng(), result.geocodes[0].location.getLat()];
-
-        // 自定义标记
-        const marker = new AMap.Marker({
-          position: lnglat,
-          content: `<div style="
-            background:${loc.color};
-            width:24px;height:24px;
-            border-radius:50% 50% 50% 0;
-            transform:rotate(-45deg);
-            border:2px solid #0c1a2e;
-            box-shadow:0 2px 6px rgba(0,0,0,0.4);
-            display:flex;align-items:center;justify-content:center;
-            font-size:11px;font-weight:bold;color:#fff;
-          ">${idx + 1}</div>`,
-          offset: new AMap.Pixel(-12, -24),
-          map: map,
-        });
-
-        // 信息窗
-        marker.on("click", () => {
-          const info = new AMap.InfoWindow({
-            content: `<div style="padding:6px 10px;font-size:12px;line-height:1.6">
-              <b>${loc.title}</b><br>
-              <span style="color:${loc.color}">${loc.type}</span> ${loc.time}<br>
-              📍 ${loc.name}
-            </div>`,
-            offset: new AMap.Pixel(0, -20),
-          });
-          info.open(map, lnglat);
-        });
-
-        markers.push(marker);
-
-        // 画连线
-        if (markers.length >= 2) {
-          const path = markers.map((m) => m.getPosition());
-          new AMap.Polyline({
-            path: path,
-            strokeColor: "#ffd93d",
-            strokeWeight: 2,
-            strokeOpacity: 0.6,
-            strokeStyle: "dashed",
-            map: map,
-          });
+  // 用 Promise 包装 geocoding，等全部完成
+  const geocodePromises = locations.map((loc, idx) => {
+    return new Promise((resolve) => {
+      geocoder.getLocation(loc.name, (status, result) => {
+        if (status === "complete" && result.geocodes && result.geocodes[0]) {
+          const gc = result.geocodes[0];
+          const lnglat = [gc.location.getLng(), gc.location.getLat()];
+          console.log(`[Day${day.day}] geocoded OK: "${loc.name}" →`, lnglat);
+          resolve({ loc, idx, lnglat });
+        } else {
+          console.warn(`[Day${day.day}] geocode FAILED: "${loc.name}" status=${status}`);
+          resolve(null);
         }
-
-        // 全部 geocoding 完成后自动调整视野
-        if (markers.length === locations.length) {
-          map.setFitView(markers, false, [40, 40, 40, 40]);
-        }
-      }
+      });
     });
+  });
+
+  // 全部 geocoding 完成后画点 + 连线
+  Promise.all(geocodePromises).then((results) => {
+    const points = results.filter((r) => r && r.lnglat);
+    console.log(`[Day${day.day}] geocoded ${points.length}/${locations.length} points`);
+
+    if (points.length === 0) {
+      container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地点解析失败</div>';
+      return;
+    }
+
+    const markers = [];
+
+    points.forEach(({ loc, idx, lnglat }) => {
+      const marker = new AMap.Marker({
+        position: lnglat,
+        content: `<div style="
+          background:${loc.color};
+          width:24px;height:24px;
+          border-radius:50% 50% 50% 0;
+          transform:rotate(-45deg);
+          border:2px solid #0c1a2e;
+          box-shadow:0 2px 6px rgba(0,0,0,0.4);
+          display:flex;align-items:center;justify-content:center;
+          font-size:11px;font-weight:bold;color:#fff;
+        ">${idx + 1}</div>`,
+        offset: new AMap.Pixel(-12, -24),
+        map: map,
+      });
+
+      marker.on("click", () => {
+        const info = new AMap.InfoWindow({
+          content: `<div style="padding:6px 10px;font-size:12px;line-height:1.6">
+            <b>${loc.title}</b><br>
+            <span style="color:${loc.color}">${loc.type}</span> ${loc.time}<br>
+            📍 ${loc.name}
+          </div>`,
+          offset: new AMap.Pixel(0, -20),
+        });
+        info.open(map, lnglat);
+      });
+
+      markers.push(marker);
+    });
+
+    // 画连线
+    if (markers.length >= 2) {
+      const path = markers.map((m) => m.getPosition());
+      new AMap.Polyline({
+        path: path,
+        strokeColor: "#ffd93d",
+        strokeWeight: 2,
+        strokeOpacity: 0.6,
+        strokeStyle: "dashed",
+        map: map,
+      });
+    }
+
+    // 自动调整视野
+    map.setFitView(markers, false, [40, 40, 40, 40]);
+    console.log(`[Day${day.day}] map ready, fitView done`);
   });
 }
 
