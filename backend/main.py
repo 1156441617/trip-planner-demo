@@ -422,8 +422,9 @@ async def demo_plan():
 
 
 # ---------------------------------------------------------------------------
-# 入口
+# 入口 —— 本地开发 / Render / Hugging Face Spaces 通用
 # ---------------------------------------------------------------------------
 if __name__ == "__main__":
     import uvicorn
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
+    port = int(os.getenv("PORT", "8000"))
+    uvicorn.run("main:app", host="0.0.0.0", port=port, reload=False)
