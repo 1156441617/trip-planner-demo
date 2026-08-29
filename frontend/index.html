@@ -1032,13 +1032,34 @@ async function initMaps(p) {
   }
 }
 
-// Nominatim geocoding（OpenStreetMap 免费 API，全球通用）
+// 地理编码：高德 REST API（国内）+ Nominatim（海外）fallback
 async function geocodeAddress(address) {
-  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
-  const res = await fetch(url, { headers: { "Accept-Language": "zh,en" } });
-  const data = await res.json();
-  if (data && data[0]) {
-    return [parseFloat(data[0].lat), parseFloat(data[0].lon)];
+  // 1. 先试高德 REST API（支持中国地址，速度快）
+  try {
+    const amapUrl = `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(address)}&key=5b3217284873669fc9c0a6ed2d791837&output=json`;
+    const res = await fetch(amapUrl);
+    const data = await res.json();
+    if (data.status === "1" && data.geocodes && data.geocodes[0]) {
+      const [lng, lat] = data.geocodes[0].location.split(",").map(parseFloat);
+      console.log(`  geocode(AMap): "${address}" → [${lat}, ${lng}]`);
+      return [lat, lng];
+    }
+  } catch (e) {
+    console.warn(`  geocode(AMap) failed: "${address}"`, e.message);
+  }
+  // 2. Fallback: Nominatim（海外地址）
+  try {
+    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
+    const res2 = await fetch(nomUrl, { headers: { "Accept-Language": "zh,en" } });
+    const data2 = await res2.json();
+    if (data2 && data2[0]) {
+      const lat = parseFloat(data2[0].lat);
+      const lng = parseFloat(data2[0].lon);
+      console.log(`  geocode(Nominatim): "${address}" → [${lat}, ${lng}]`);
+      return [lat, lng];
+    }
+  } catch (e) {
+    console.warn(`  geocode(Nominatim) failed: "${address}"`, e.message);
   }
   return null;
 }
@@ -1117,8 +1138,8 @@ async function initDayMap(day) {
     } else {
       console.warn(`[Day${day.day}] geocode FAILED: "${loc.name}"`);
     }
-    // Nominatim 限速：间隔 1.1 秒
-    if (i < locations.length - 1) await new Promise(r => setTimeout(r, 1100));
+    // 短暂间隔避免限速
+    if (i < locations.length - 1) await new Promise(r => setTimeout(r, 200));
   }
 
   console.log(`[Day${day.day}] geocoded ${points.length}/${locations.length} points`);
