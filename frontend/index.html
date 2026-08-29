@@ -1,0 +1,1011 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Trip Planner · 旅行规划板</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Caveat:wght@500;700&family=Noto+Sans+SC:wght@400;500;700&family=Playfair+Display+SC:wght@600;900&display=swap" rel="stylesheet">
+<script src="https://cdn.tailwindcss.com"></script>
+<script>
+tailwind.config = {
+  theme: {
+    extend: {
+      colors: {
+        ink:    {  DEFAULT: '#0c1a2e',  2: '#162447',  3: '#1e2f5a' },
+        coral:  {  DEFAULT: '#ff6b6b' },
+        mustard:{  DEFAULT: '#ffd93d' },
+        mint:   {  DEFAULT: '#6bcb77' },
+        sky:    {  DEFAULT: '#4d96ff' },
+        pink:   {  DEFAULT: '#ff85a1' },
+      },
+      fontFamily: {
+        display: ['"Playfair Display SC"', 'serif'],
+        hand:    ['"Caveat"', 'cursive'],
+        sans:    ['"Noto Sans SC"', 'system-ui', 'sans-serif'],
+      },
+      animation: {
+        'pop-in':     'popIn 0.5s cubic-bezier(.2,.9,.3,1.2) both',
+        'slide-right':'slideRight 0.5s cubic-bezier(.2,.9,.3,1.1) both',
+        'stamp':      'stampDown 0.4s cubic-bezier(.3,.1,.2,1.6) both',
+        'float-y':    'floatY 4s ease-in-out infinite',
+        'pulse-dot':  'pulseDot 1.4s ease-in-out infinite both',
+        'draw-line':  'drawLine 1.5s ease-out forwards',
+      },
+      keyframes: {
+        popIn: { '0%':{opacity:'0',transform:'scale(.5)'}, '100%':{opacity:'1',transform:'scale(1)'} },
+        slideRight: { '0%':{opacity:'0',transform:'translateX(-24px)'}, '100%':{opacity:'1',transform:'translateX(0)'} },
+        stampDown: { '0%':{opacity:'0',transform:'translateY(-30px) rotate(-4deg)'}, '60%':{transform:'translateY(4px) rotate(1deg)'}, '100%':{opacity:'1',transform:'translateY(0) rotate(0deg)'} },
+        floatY: { '0%,100%':{transform:'translateY(0)'}, '50%':{transform:'translateY(-10px)'} },
+        pulseDot: { '0%,80%,100%':{transform:'scale(0)',opacity:'0.4'}, '40%':{transform:'scale(1)',opacity:'1'} },
+        drawLine: { '0%':{strokeDashoffset:'1000'}, '100%':{strokeDashoffset:'0'} },
+      }
+    }
+  }
+}
+</script>
+<style>
+/* ============ 全局基础 ============ */
+html,body { scroll-behavior: smooth; }
+body {
+  font-family: "Noto Sans SC", system-ui, sans-serif;
+  background:
+    radial-gradient(ellipse at 20% 10%, rgba(77,150,255,0.15), transparent 50%),
+    radial-gradient(ellipse at 80% 90%, rgba(255,107,107,0.12), transparent 55%),
+    radial-gradient(ellipse at 50% 50%, rgba(107,203,119,0.08), transparent 60%),
+    #0c1a2e;
+  color: #e6edf5;
+  min-height: 100vh;
+  background-attachment: fixed;
+}
+/* 噪点纹理叠加 */
+body::before {
+  content:'';
+  position: fixed; inset: 0; pointer-events: none; z-index: 0;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/><feColorMatrix values='0 0 0 0 1  0 0 0 0 1  0 0 0 0 1  0 0 0 0.06 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.5;
+}
+
+/* 图钉 SVG */
+.pin { width: 16px; height: 16px; filter: drop-shadow(0 2px 3px rgba(0,0,0,.4)); }
+.ticket-stub {
+  background: linear-gradient(135deg, #ff6b6b, #ff4757);
+  clip-path: polygon(0 0, 100% 0, 100% 70%, 95% 75%, 85% 70%, 75% 75%, 65% 70%, 55% 75%, 45% 70%, 35% 75%, 25% 70%, 15% 75%, 5% 70%, 0 75%);
+}
+
+/* 表单样式 */
+.input-field {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: #fff;
+  border-radius: 10px;
+  padding: 12px 16px;
+  width: 100%;
+  font-size: 15px;
+  transition: all .2s;
+  outline: none;
+}
+.input-field:focus {
+  border-color: #4d96ff;
+  background: rgba(255,255,255,0.1);
+  box-shadow: 0 0 0 3px rgba(77,150,255,0.25);
+}
+.input-field::placeholder { color: rgba(255,255,255,0.35); }
+
+/* 标签 chip */
+.chip {
+  padding: 7px 14px; border-radius: 24px; font-size: 13px;
+  border: 1px solid rgba(255,255,255,0.18);
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.75);
+  cursor: pointer; transition: all .18s;
+}
+.chip:hover { background: rgba(255,255,255,0.1); border-color: rgba(255,255,255,0.3); }
+.chip.active {
+  background: #ff6b6b; color: #fff; border-color: #ff6b6b;
+  box-shadow: 0 2px 12px rgba(255,107,107,.5);
+}
+.chip.pace-active {
+  background: #4d96ff; color: #fff; border-color: #4d96ff;
+  box-shadow: 0 2px 12px rgba(77,150,255,.5);
+}
+
+/* 深色卡片 */
+.card-dark {
+  background: rgba(22, 36, 71, 0.65);
+  border: 1px solid rgba(255,255,255,0.08);
+  backdrop-filter: blur(10px);
+  border-radius: 16px;
+}
+
+/* 步骤数字 */
+.step-num {
+  font-family: "Playfair Display SC", serif;
+  font-size: 28px; font-weight: 900;
+  line-height: 1;
+  background: linear-gradient(135deg, #ff6b6b, #ffd93d);
+  -webkit-background-clip: text; background-clip: text; color: transparent;
+}
+
+/* 便签 / 票根 收集板 */
+.collect-board {
+  position: sticky; top: 80px;
+  min-height: 400px;
+  background:
+    repeating-linear-gradient(45deg, rgba(255,255,255,.03) 0 12px, transparent 12px 24px);
+  border-radius: 16px;
+  border: 1px dashed rgba(255,255,255,.15);
+  padding: 20px;
+}
+
+/* 每日路线卡里的圆点 + 线 */
+.route-dot { width:14px; height:14px; border-radius:50%; border:3px solid; background:#0c1a2e; flex-shrink:0; position:relative; z-index:1; }
+.route-line { width:3px; min-height:36px; background:rgba(255,255,255,.2); margin-left:5px; }
+
+/* 邮票边框 */
+.stamp-border {
+  border-radius: 12px;
+  box-shadow: 0 0 0 2px #ffd93d, 0 0 0 4px #0c1a2e, 0 0 0 6px #ffd93d;
+}
+
+/* 胶带 */
+.tape {
+  position: absolute; top:-10px; width:70px; height:24px;
+  background: repeating-linear-gradient(45deg, rgba(255,217,61,.85) 0 8px, rgba(255,217,61,.65) 8px 16px);
+  border: 1px solid rgba(255,217,61,.4);
+  transform: rotate(-3deg);
+  box-shadow: 0 2px 5px rgba(0,0,0,.3);
+}
+
+/* 滑杆 */
+input[type=range] { -webkit-appearance:none; appearance:none; background:transparent; }
+input[type=range]::-webkit-slider-runnable-track {
+  height: 6px; border-radius: 3px;
+  background: linear-gradient(to right, #4d96ff var(--v,30%), rgba(255,255,255,.15) var(--v,30%));
+}
+input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance:none; appearance:none;
+  width:20px; height:20px; border-radius:50%; margin-top:-7px;
+  background:#fff; border:3px solid #4d96ff;
+  box-shadow: 0 2px 8px rgba(77,150,255,.6); cursor:pointer;
+}
+
+/* 按钮 */
+.btn-primary {
+  background: linear-gradient(135deg, #ff6b6b, #ff4757);
+  color:#fff; padding: 12px 28px; border-radius: 12px;
+  font-weight: 700; font-size: 15px; letter-spacing: .5px;
+  box-shadow: 0 6px 20px rgba(255,107,107,.4);
+  transition: transform .15s, box-shadow .15s; border:none; cursor:pointer;
+}
+.btn-primary:hover { transform: translateY(-2px); box-shadow: 0 10px 28px rgba(255,107,107,.55); }
+.btn-primary:active { transform: translateY(0); }
+.btn-primary:disabled { opacity:.5; cursor:not-allowed; transform:none; }
+
+.btn-ghost {
+  background: rgba(255,255,255,.07);
+  border: 1px solid rgba(255,255,255,.2);
+  color: rgba(255,255,255,.85);
+  padding: 10px 20px; border-radius: 10px;
+  font-weight:500; font-size: 14px; cursor:pointer;
+  transition: all .18s;
+}
+.btn-ghost:hover { background: rgba(255,255,255,.12); }
+
+/* 生成中动画 */
+.gen-orb {
+  width:140px; height:140px; border-radius:50%;
+  background: conic-gradient(from 0deg, #ff6b6b, #ffd93d, #6bcb77, #4d96ff, #ff6b6b);
+  animation: spin 3s linear infinite;
+  box-shadow: 0 0 60px rgba(77,150,255,.5);
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+.gen-orb-inner {
+  width: 110px; height:110px; border-radius:50%;
+  background: #0c1a2e; position:absolute; top:50%; left:50%;
+  transform: translate(-50%,-50%);
+  display:flex; align-items:center; justify-content:center;
+}
+
+/* 结果路线卡片里的分类色 */
+.trip-type-景点 { background:#6bcb77; color:#0c1a2e; }
+.trip-type-美食 { background:#ff6b6b; color:#0c1a2e; }
+.trip-type-交通 { background:#4d96ff; color:#fff; }
+.trip-type-住宿 { background:#ffd93d; color:#0c1a2e; }
+.trip-type-体验 { background:#ff85a1; color:#0c1a2e; }
+.trip-type-购物 { background:#ff6b6b; color:#0c1a2e; }
+
+/* 结果区渐显 */
+.reveal-block { animation: slideUp .6s cubic-bezier(.2,.9,.3,1.1) both; }
+@keyframes slideUp {
+  from { opacity:0; transform: translateY(24px); }
+  to { opacity:1; transform: translateY(0); }
+}
+
+/* SVG 路线绘制 */
+.route-svg path { stroke-dasharray: 800; stroke-dashoffset: 800; }
+.route-svg.draw path { animation: drawPath 2s ease-out forwards; }
+@keyframes drawPath { to { stroke-dashoffset: 0; } }
+
+/* scrollbar */
+::-webkit-scrollbar { width:8px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); border-radius:4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(255,255,255,.25); }
+</style>
+</head>
+<body>
+<div class="relative z-10">
+
+<!-- ============ 顶部 Header ============ -->
+<header class="border-b border-white/5 backdrop-blur-md bg-ink/70 sticky top-0 z-50">
+  <div class="max-w-6xl mx-auto px-5 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <!-- Logo: 飞机图标 -->
+      <svg class="w-8 h-8" viewBox="0 0 48 48" fill="none">
+        <path d="M24 4L28 18L44 20L30 28L34 44L24 36L14 44L18 28L4 20L20 18Z"
+              fill="#ff6b6b" stroke="#ffd93d" stroke-width="1.5"/>
+      </svg>
+      <div>
+        <div class="font-display font-bold text-lg tracking-wide">TRIP<span class="text-coral">·</span>PLANNER</div>
+        <div class="font-hand text-mint text-sm -mt-1">AI Adventure Board</div>
+      </div>
+    </div>
+    <div class="flex items-center gap-2 text-xs">
+      <span id="apiDot" class="w-2.5 h-2.5 rounded-full bg-sky animate-pulse"></span>
+      <span id="apiLabel" class="text-white/60">探活中…</span>
+      <span class="text-white/25 mx-2">|</span>
+      <span class="font-hand text-coral text-base">5·steps</span>
+    </div>
+  </div>
+</header>
+
+<!-- ============ Hero ============ -->
+<section class="max-w-6xl mx-auto px-5 pt-10 pb-6">
+  <div class="flex items-end justify-between flex-wrap gap-4">
+    <div>
+      <div class="font-hand text-coral text-xl mb-1">Bon voyage !</div>
+      <h1 class="font-display text-4xl sm:text-5xl font-black leading-tight">
+        把旅行<br/>
+        <span class="text-transparent bg-clip-text bg-gradient-to-r from-mint via-mustard to-coral">贴到板子上</span>
+      </h1>
+      <p class="text-white/50 mt-3 max-w-md text-sm leading-relaxed">
+        告诉 AI 出发地 · 时间 · 预算 · 偏好 · 节奏<br/>
+        5 张便签 → 一张完整旅行规划板
+      </p>
+    </div>
+
+    <!-- Hero 数字 -->
+    <div class="flex gap-6">
+      <div class="text-center">
+        <div class="font-display font-black text-3xl text-coral">5</div>
+        <div class="text-[11px] text-white/40 uppercase tracking-wider">Steps</div>
+      </div>
+      <div class="text-center">
+        <div class="font-display font-black text-3xl text-mustard">3m</div>
+        <div class="text-[11px] text-white/40 uppercase tracking-wider">生成耗时</div>
+      </div>
+      <div class="text-center">
+        <div class="font-display font-black text-3xl text-mint">100%</div>
+        <div class="text-[11px] text-white/40 uppercase tracking-wider">可执行</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 图钉进度条 ============ -->
+<section class="max-w-6xl mx-auto px-5 mb-8">
+  <div class="card-dark p-4 flex items-center gap-2">
+    <!-- Pin 1 -->
+    <div class="flex items-center gap-2" id="pin1">
+      <div class="w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-coral border-2 border-coral shadow-[0_0_20px_rgba(255,107,107,.5)] transition-all"><svg class="pin" viewBox="0 0 32 32" fill="#0c1a2e"><path d="M16 2C16 2 6 6 6 16c0 6.2 4 9.8 8 14 2 2 2 2 2 2s0 0 2-2c4-4.2 8-7.8 8-14 0-10-10-14-10-14z"/></svg></div>
+      <div class="text-xs">
+        <div class="text-white/40 text-[10px] uppercase tracking-wider">Step 1</div>
+        <div class="text-white font-medium">出发地</div>
+      </div>
+    </div>
+    <div class="flex-1 h-[2px] bg-white/15 mx-1"></div>
+    <!-- Pin 2 -->
+    <div class="flex items-center gap-2" id="pin2">
+      <div class="w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-white/10 border-2 border-white/20 transition-all">2</div>
+      <div class="text-xs opacity-40">
+        <div class="text-[10px] uppercase tracking-wider">Step 2</div>
+        <div class="font-medium">时间预算</div>
+      </div>
+    </div>
+    <div class="flex-1 h-[2px] bg-white/15 mx-1"></div>
+    <!-- Pin 3 -->
+    <div class="flex items-center gap-2" id="pin3">
+      <div class="w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-white/10 border-2 border-white/20 transition-all">3</div>
+      <div class="text-xs opacity-40">
+        <div class="text-[10px] uppercase tracking-wider">Step 3</div>
+        <div class="font-medium">偏好</div>
+      </div>
+    </div>
+    <div class="flex-1 h-[2px] bg-white/15 mx-1"></div>
+    <!-- Pin 4 -->
+    <div class="flex items-center gap-2" id="pin4">
+      <div class="w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-white/10 border-2 border-white/20 transition-all">4</div>
+      <div class="text-xs opacity-40">
+        <div class="text-[10px] uppercase tracking-wider">Step 4</div>
+        <div class="font-medium">生成中</div>
+      </div>
+    </div>
+    <div class="flex-1 h-[2px] bg-white/15 mx-1"></div>
+    <!-- Pin 5 -->
+    <div class="flex items-center gap-2" id="pin5">
+      <div class="w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-white bg-white/10 border-2 border-white/20 transition-all">✓</div>
+      <div class="text-xs opacity-40">
+        <div class="text-[10px] uppercase tracking-wider">Result</div>
+        <div class="font-medium">查看板</div>
+      </div>
+    </div>
+  </div>
+</section>
+
+<!-- ============ 主体：两栏布局 ============ -->
+<main class="max-w-6xl mx-auto px-5 pb-16">
+<div class="grid lg:grid-cols-[1fr_340px] gap-8">
+
+  <!-- ============ 左栏：表单步骤 ============ -->
+  <div id="formArea">
+
+    <!-- Step 1 -->
+    <section class="card-dark p-6 mb-5 animate-slide-right" data-step="1">
+      <div class="flex items-center gap-3 mb-5">
+        <span class="step-num">01</span>
+        <div class="flex-1">
+          <div class="font-bold text-white">Where from & Where to</div>
+          <div class="text-xs text-white/40">出发地与目的地</div>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-4">
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">出发城市</label>
+          <input id="departure" class="input-field" type="text" value="杭州" placeholder="杭州 / 北京 / 上海" />
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            <button onclick="quick('departure','北京')" class="chip">北京</button>
+            <button onclick="quick('departure','上海')" class="chip">上海</button>
+            <button onclick="quick('departure','广州')" class="chip">广州</button>
+            <button onclick="quick('departure','成都')" class="chip">成都</button>
+            <button onclick="quick('departure','深圳')" class="chip">深圳</button>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">目的地 ✨</label>
+          <input id="destination" class="input-field" type="text" value="成都" placeholder="成都 / 东京 / 三亚" />
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            <button onclick="quick('destination','成都')" class="chip">成都</button>
+            <button onclick="quick('destination','重庆')" class="chip">重庆</button>
+            <button onclick="quick('destination','三亚')" class="chip">三亚</button>
+            <button onclick="quick('destination','丽江')" class="chip">丽江</button>
+            <button onclick="quick('destination','东京')" class="chip">东京</button>
+            <button onclick="quick('destination','曼谷')" class="chip">曼谷</button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex justify-end">
+        <button onclick="next(1)" class="btn-primary">下一步 →</button>
+      </div>
+    </section>
+
+    <!-- Step 2 -->
+    <section class="card-dark p-6 mb-5 hidden" data-step="2">
+      <div class="flex items-center gap-3 mb-5">
+        <span class="step-num">02</span>
+        <div class="flex-1">
+          <div class="font-bold text-white">When & How much</div>
+          <div class="text-xs text-white/40">时间与预算</div>
+        </div>
+      </div>
+      <div class="grid sm:grid-cols-2 gap-5">
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">出行日期</label>
+          <input id="dates" class="input-field" type="text" value="国庆 10.1-10.4" />
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            <button onclick="quick('dates','国庆 10.1-10.4')" class="chip">国庆</button>
+            <button onclick="quick('dates','春节 7 天')" class="chip">春节</button>
+            <button onclick="quick('dates','周末 2 天')" class="chip">周末</button>
+            <button onclick="quick('dates','五一 5 天')" class="chip">五一</button>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">
+            游玩天数
+            <span class="font-display text-mustard font-bold text-lg ml-2"><span id="daysVal">3</span> 天</span>
+          </label>
+          <input id="days" type="range" min="1" max="10" value="3"
+                 style="--v:calc((3-1)/9*100%)"
+                 oninput="document.getElementById('daysVal').textContent=this.value;this.style.setProperty('--v',(this.value-1)/9*100+'%')" />
+          <div class="flex justify-between text-[10px] text-white/30 mt-1"><span>1天</span><span>5天</span><span>10天</span></div>
+        </div>
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">预算区间（总）</label>
+          <input id="budget" class="input-field" type="text" value="3000-5000 元" />
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            <button onclick="quick('budget','2000-3000 元')" class="chip">经济</button>
+            <button onclick="quick('budget','3000-5000 元')" class="chip active" onclick="return false">中等</button>
+            <button onclick="quick('budget','5000-10000 元')" class="chip">舒适</button>
+            <button onclick="quick('budget','1 万以上')" class="chip">豪华</button>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">同行人</label>
+          <input id="companions" class="input-field" type="text" value="2 人情侣" />
+          <div class="flex flex-wrap gap-1.5 mt-3">
+            <button onclick="quick('companions','一个人')" class="chip">一个人</button>
+            <button onclick="quick('companions','2 人情侣')" class="chip active" onclick="return false">情侣</button>
+            <button onclick="quick('companions','带老人孩子')" class="chip">亲子</button>
+            <button onclick="quick('companions','朋友 4 人')" class="chip">朋友</button>
+          </div>
+        </div>
+      </div>
+      <div class="mt-6 flex justify-between">
+        <button onclick="prev(2)" class="btn-ghost">← 上一步</button>
+        <button onclick="next(2)" class="btn-primary">下一步 →</button>
+      </div>
+    </section>
+
+    <!-- Step 3 -->
+    <section class="card-dark p-6 mb-5 hidden" data-step="3">
+      <div class="flex items-center gap-3 mb-5">
+        <span class="step-num">03</span>
+        <div class="flex-1">
+          <div class="font-bold text-white">What do you love</div>
+          <div class="text-xs text-white/40">偏好与忌口</div>
+        </div>
+      </div>
+
+      <div class="mb-6">
+        <div class="text-xs text-white/50 mb-3">兴趣标签（可多选）</div>
+        <div id="interestChips" class="flex flex-wrap gap-2.5"></div>
+      </div>
+
+      <div class="grid sm:grid-cols-2 gap-5">
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">出行节奏</label>
+          <div class="grid grid-cols-3 gap-2">
+            <button onclick="setPace('轻松')" id="pace_relax"
+                    class="chip flex-col items-center py-4">
+              <span class="text-xl mb-1">💆</span><span>轻松</span>
+            </button>
+            <button onclick="setPace('正常')" id="pace_normal"
+                    class="chip flex-col items-center py-4 pace-active">
+              <span class="text-xl mb-1">🚶</span><span>正常</span>
+            </button>
+            <button onclick="setPace('紧凑')" id="pace_tight"
+                    class="chip flex-col items-center py-4">
+              <span class="text-xl mb-1">🏃</span><span>紧凑</span>
+            </button>
+          </div>
+        </div>
+        <div>
+          <label class="text-xs text-white/50 mb-2 block">忌口 / 想避开的</label>
+          <input id="avoid" class="input-field" type="text" placeholder="不吃辣 / 不想爬山 / 避开购物点" />
+        </div>
+      </div>
+
+      <div class="mt-6 flex justify-between">
+        <button onclick="prev(3)" class="btn-ghost">← 上一步</button>
+        <button onclick="generate()" id="genBtn"
+                class="btn-primary text-base px-8 py-4">
+          ✈️ 让 AI 钉好这张板
+        </button>
+      </div>
+    </section>
+
+    <!-- Step 4: 生成中 -->
+    <section id="genSection" class="card-dark p-10 mb-5 hidden text-center">
+      <div class="relative inline-block mb-6">
+        <div class="gen-orb"></div>
+        <div class="gen-orb-inner">
+          <span class="text-4xl animate-float-y">🤖</span>
+        </div>
+      </div>
+      <h3 class="font-display text-xl text-white mb-2">钉板中…</h3>
+      <p id="genStatus" class="text-sm text-white/50 mb-6">正在理解你的 5 张便签</p>
+      <div class="flex items-center justify-center gap-2">
+        <span class="w-3 h-3 rounded-full bg-coral pulse-dot"></span>
+        <span class="w-3 h-3 rounded-full bg-mustard pulse-dot"></span>
+        <span class="w-3 h-3 rounded-full bg-mint pulse-dot"></span>
+      </div>
+      <div class="mt-6 text-[11px] text-white/30 max-w-sm mx-auto leading-relaxed font-hand text-base">
+        路线优化 · 预算计算 · 天气适配 · 避开人流 · 注意事项清单…
+      </div>
+    </section>
+
+  </div>
+
+  <!-- ============ 右栏：收集板 ============ -->
+  <aside class="hidden lg:block">
+    <div class="collect-board animate-slide-right" style="animation-delay:.15s">
+      <div class="font-hand text-mustard text-lg mb-4 flex items-center gap-2">
+        <span class="text-xl">📌</span>收集板 · Adventure Board
+      </div>
+      <!-- 5 个空位便签，step 后出现 -->
+      <div id="stub1" class="hidden relative mb-4 animate-stamp">
+        <div class="tape"></div>
+        <div class="bg-coral/20 border border-coral/40 rounded-lg p-3 backdrop-blur-sm">
+          <div class="text-[10px] text-coral uppercase tracking-widest font-bold mb-1">Ticket Stub · Step 1</div>
+          <div class="text-sm text-white/90" id="stub1Body">出发 <span class="font-display text-mustard font-black" id="s1Dep">—</span> → 抵达 <span class="font-display text-mustard font-black" id="s1Dst">—</span></div>
+        </div>
+      </div>
+      <div id="stub2" class="hidden relative mb-4 animate-stamp" style="animation-delay:.1s">
+        <div class="tape" style="background:repeating-linear-gradient(45deg,rgba(77,150,255,.85) 0 8px,rgba(77,150,255,.6) 8px 16px);transform:rotate(2deg);"></div>
+        <div class="bg-sky/15 border border-sky/40 rounded-lg p-3 backdrop-blur-sm">
+          <div class="text-[10px] text-sky uppercase tracking-widest font-bold mb-1">Calendar · Step 2</div>
+          <div class="text-sm text-white/90" id="stub2Body">—</div>
+        </div>
+      </div>
+      <div id="stub3" class="hidden relative mb-4 animate-stamp" style="animation-delay:.2s">
+        <div class="tape" style="background:repeating-linear-gradient(45deg,rgba(107,203,119,.85) 0 8px,rgba(107,203,119,.6) 8px 16px);transform:rotate(-2deg);"></div>
+        <div class="bg-mint/15 border border-mint/40 rounded-lg p-3 backdrop-blur-sm">
+          <div class="text-[10px] text-mint uppercase tracking-widest font-bold mb-1">Tags · Step 3</div>
+          <div class="text-sm text-white/90" id="stub3Body">—</div>
+        </div>
+      </div>
+
+      <div id="emptyHint" class="text-center py-16">
+        <div class="font-hand text-white/30 text-xl mb-2">开始填表单吧</div>
+        <div class="text-[11px] text-white/20">每完成一步 → 这张板上就多一张便签 📌</div>
+        <svg class="w-16 h-16 mx-auto mt-4 opacity-30" viewBox="0 0 64 64" fill="none">
+          <circle cx="32" cy="32" r="28" stroke="rgba(255,255,255,.2)" stroke-width="2" stroke-dasharray="4 4"/>
+          <path d="M32 16 L38 30 L52 32 L40 40 L44 54 L32 46 L20 54 L24 40 L12 32 L26 30 Z"
+                stroke="rgba(255,255,255,.3)" stroke-width="1.5"/>
+        </svg>
+      </div>
+
+      <!-- 生成后的完成预览 -->
+      <div id="previewHint" class="hidden">
+        <div class="text-center py-8 opacity-70">
+          <div class="text-4xl mb-2">🎯</div>
+          <div class="font-hand text-mustard text-lg">完美 → 右边看完整板</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- API 健康状态小卡 -->
+    <div class="mt-4 text-xs text-white/30 text-center font-hand">
+      Powered by DeepSeek · FastAPI · Tailwind CDN
+    </div>
+  </aside>
+
+</div>
+</main>
+
+<!-- ============ 结果板 ============ -->
+<section id="resultArea" class="hidden max-w-6xl mx-auto px-5 pb-20">
+
+  <!-- 头部：邮票 + 渐变 Banner -->
+  <div class="relative mb-8 animate-slide-up">
+    <!-- 邮票装饰 -->
+    <div class="absolute -top-3 -left-3 bg-mustard/20 border border-dashed border-mustard/60 px-3 py-1 rounded font-hand text-mustard text-base rotate-[-5deg]">
+      POST · 2026
+    </div>
+    <div class="absolute -top-3 right-3 bg-coral/20 border border-dashed border-coral/60 px-3 py-1 rounded font-hand text-coral text-base rotate-[4deg]">
+      TRIP · BOARD
+    </div>
+
+    <div class="card-dark p-6 sm:p-8 relative overflow-hidden">
+      <!-- 背景装饰 -->
+      <svg class="absolute -right-10 -top-10 w-52 h-52 opacity-10" viewBox="0 0 200 200">
+        <path d="M40 100 Q 80 40, 120 100 T 200 100" stroke="#ff6b6b" stroke-width="2" fill="none"/>
+        <path d="M40 120 Q 80 60, 120 120 T 200 120" stroke="#4d96ff" stroke-width="2" fill="none"/>
+        <path d="M40 140 Q 80 80, 120 140 T 200 140" stroke="#6bcb77" stroke-width="2" fill="none"/>
+      </svg>
+
+      <div class="font-hand text-coral text-lg mb-1">Your Adventure Board</div>
+      <h2 id="r_summary" class="font-display text-2xl sm:text-3xl font-black leading-tight mb-4"></h2>
+
+      <div class="grid sm:grid-cols-3 gap-3">
+        <div class="bg-coral/10 border border-coral/30 rounded-xl p-4">
+          <div class="text-[10px] text-coral uppercase tracking-widest font-bold mb-1">💰 总花费</div>
+          <div id="r_cost" class="text-white font-semibold text-sm"></div>
+        </div>
+        <div class="bg-sky/10 border border-sky/30 rounded-xl p-4">
+          <div class="text-[10px] text-sky uppercase tracking-widest font-bold mb-1">🚄 推荐交通</div>
+          <div id="r_transport" class="text-white font-semibold text-sm"></div>
+        </div>
+        <div class="bg-mint/10 border border-mint/30 rounded-xl p-4">
+          <div class="text-[10px] text-mint uppercase tracking-widest font-bold mb-1">🏨 住宿建议</div>
+          <div id="r_accommodation" class="text-white font-semibold text-sm"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 每日路线卡：带彩色圆点 + 连线 -->
+  <div id="daysContainer" class="space-y-5"></div>
+
+  <!-- Checklist -->
+  <div id="checklistSection" class="mt-8 card-dark p-6 animate-slide-up" style="animation-delay:.4s">
+    <div class="flex items-center gap-3 mb-5">
+      <span class="font-display text-2xl font-black text-mustard">⚠️</span>
+      <div>
+        <div class="font-bold text-white">Checklist · 注意事项</div>
+        <div class="text-xs text-white/40">把容易忽略的细节都钉好</div>
+      </div>
+    </div>
+    <div id="checklistGrid" class="grid sm:grid-cols-2 gap-3"></div>
+  </div>
+
+  <!-- 底部操作 -->
+  <div class="mt-8 flex flex-wrap items-center justify-between gap-4">
+    <div class="text-xs text-white/30 font-hand text-lg">
+      🕒 <span id="r_time">—</span>
+    </div>
+    <div class="flex gap-3">
+      <button onclick="reset()" class="btn-ghost">🔄 再钉一张</button>
+      <button onclick="downloadJSON()" class="btn-ghost">💾 下载 JSON</button>
+    </div>
+  </div>
+
+</section>
+
+<!-- Footer -->
+<footer class="max-w-6xl mx-auto px-5 pb-10 text-center text-xs text-white/25 font-hand text-base">
+  Made with ❤️ · DeepSeek + FastAPI + Tailwind CDN · 找工作 Demo
+</footer>
+
+</div>
+
+<!-- ============================================================== -->
+<!-- JS                                                              -->
+<!-- ============================================================== -->
+<script>
+// ===== API 地址 =====
+// 本地开发：http://localhost:8000
+// 部署到 Render.com 后端后：改成你的 Render URL，例如 "https://trip-planner-api.onrender.com"
+// GitHub Pages 默认（后端为空）：跳过 API，直接用内置 mock 数据
+const API_BASE = (location.hostname === "localhost" || location.hostname === "127.0.0.1")
+  ? "http://localhost:8000"
+  : "";   // ← 部署后改成你的 Render URL，例如 "https://trip-planner-api.onrender.com"
+const API_ENABLED = API_BASE.length > 0;
+
+let currentStep = 1;
+let selectedInterests = new Set(["美食体验","自然风光"]);
+let currentPace = "正常";
+let lastPlan = null;
+
+const INTERESTS = [
+  {k:"自然风光",i:"🏔️"},{k:"美食体验",i:"🍜"},{k:"亲子出行",i:"👨‍👩‍👧"},
+  {k:"人文历史",i:"🏛️"},{k:"购物逛街",i:"🛍️"},{k:"休闲放松",i:"🏖️"},
+  {k:"出片打卡",i:"📷"},{k:"户外运动",i:"🚴"},{k:"夜生活",i:"🌃"},{k:"小众探索",i:"🗺️"},
+];
+const TYPE_ICONS = {"景点":"📍","美食":"🍜","交通":"🚄","住宿":"🏨","购物":"🛍️","体验":"🎫"};
+const TYPE_COLORS = {"景点":"#6bcb77","美食":"#ff6b6b","交通":"#4d96ff","住宿":"#ffd93d","购物":"#ff85a1","体验":"#ff6b6b"};
+
+// ---------------------------------------------------
+// init
+// ---------------------------------------------------
+(function init(){
+  buildInterestChips();
+  checkApi();
+  setStep(1);
+})();
+
+function buildInterestChips(){
+  const box = document.getElementById("interestChips");
+  box.innerHTML = INTERESTS.map(t=>`
+    <button onclick="toggleTag('${t.k}')" id="tag_${t.k}"
+            class="chip ${selectedInterests.has(t.k)?'active':''} flex-col items-center py-2 min-w-[62px]">
+      <span class="text-lg mb-1">${t.i}</span><span class="text-[11px]">${t.k}</span>
+    </button>`).join("");
+}
+
+function toggleTag(k){
+  if (selectedInterests.has(k)) selectedInterests.delete(k);
+  else selectedInterests.add(k);
+  document.getElementById("tag_"+k).classList.toggle("active");
+}
+
+function setPace(p){
+  currentPace = p;
+  document.querySelectorAll(".pace-btn").forEach(b=>b.classList.remove("pace-active"));
+  const map = {"轻松":"pace_relax","正常":"pace_normal","紧凑":"pace_tight"};
+  const el = document.getElementById(map[p]);
+  if (el) el.classList.add("pace-active");
+}
+
+function quick(id,val){ document.getElementById(id).value = val; }
+
+// ---------------------------------------------------
+// stepper
+// ---------------------------------------------------
+function setStep(n){
+  currentStep = n;
+  // 表单 step 切换
+  document.querySelectorAll("[data-step]").forEach(s=>{
+    const step = parseInt(s.dataset.step,10);
+    s.classList.toggle("hidden", step !== n);
+  });
+  // 进度 pin 1-5
+  for (let i=1;i<=5;i++){
+    const pin = document.getElementById("pin"+i);
+    if (!pin) continue;
+    const circle = pin.querySelector(".w-9");
+    const texts = pin.querySelectorAll("div"); // 外层 text-xs
+    if (i < n) {
+      circle.className = "w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-mint border-2 border-mint shadow-[0_0_20px_rgba(107,203,119,.5)] transition-all";
+      circle.innerHTML = `<svg class="pin" viewBox="0 0 32 32" fill="#0c1a2e"><path d="M16 2C16 2 6 6 6 16c0 6.2 4 9.8 8 14 2 2 2 2 2 2s0 0 2-2c4-4.2 8-7.8 8-14 0-10-10-14-10-14z"/></svg>`;
+      texts.forEach(t=>t.classList.remove("opacity-40"));
+    } else if (i === n) {
+      const colors = ["","bg-coral border-coral shadow-[0_0_20px_rgba(255,107,107,.5)]","bg-sky border-sky shadow-[0_0_20px_rgba(77,150,255,.5)]","bg-mint border-mint shadow-[0_0_20px_rgba(107,203,119,.5)]","bg-mustard border-mustard shadow-[0_0_20px_rgba(255,217,61,.5)]","bg-pink border-pink shadow-[0_0_20px_rgba(255,133,161,.5)]"];
+      circle.className = "w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink border-2 transition-all " + colors[i];
+      circle.textContent = i;
+      texts.forEach(t=>t.classList.remove("opacity-40"));
+    } else {
+      circle.className = "w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-white/10 border-2 border-white/20 transition-all";
+      circle.textContent = i;
+      texts.forEach(t=>t.classList.add("opacity-40"));
+    }
+  }
+
+  // 生成便签 stub
+  if (n >= 2) showStub1();
+  if (n >= 3) showStub2();
+  if (n >= 4) showStub3();
+}
+
+function showStub1(){
+  const d1 = document.getElementById("departure").value.trim()||"—";
+  const d2 = document.getElementById("destination").value.trim()||"—";
+  document.getElementById("s1Dep").textContent = d1;
+  document.getElementById("s1Dst").textContent = d2;
+  document.getElementById("stub1").classList.remove("hidden");
+  document.getElementById("emptyHint").classList.add("hidden");
+}
+function showStub2(){
+  const days = document.getElementById("days").value;
+  const dates = document.getElementById("dates").value;
+  const bgt = document.getElementById("budget").value;
+  const comp = document.getElementById("companions").value;
+  document.getElementById("stub2Body").innerHTML =
+    `<span class="font-display text-mustard font-black">${days}</span>天 · ${dates}<br/>预算 <span class="text-mustard font-bold">${bgt}</span> · ${comp}`;
+  document.getElementById("stub2").classList.remove("hidden");
+}
+function showStub3(){
+  const tags = [...selectedInterests].join(" · ") || "—";
+  const pace = currentPace;
+  const avoid = document.getElementById("avoid").value || "无";
+  document.getElementById("stub3Body").innerHTML =
+    `${tags}<br/>节奏 <span class="font-bold text-sky">${pace}</span> · 避开: ${avoid}`;
+  document.getElementById("stub3").classList.remove("hidden");
+}
+
+function next(from){
+  if (from === 1){
+    const d1 = document.getElementById("departure").value.trim();
+    const d2 = document.getElementById("destination").value.trim();
+    if (!d1 || !d2) { alert("出发地和目的地都填一下"); return; }
+  }
+  setStep(from + 1);
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+function prev(from){ setStep(from - 1); window.scrollTo({top:0, behavior:"smooth"}); }
+
+// ---------------------------------------------------
+// api
+// ---------------------------------------------------
+async function checkApi(){
+  const dot = document.getElementById("apiDot");
+  const label = document.getElementById("apiLabel");
+  if (!API_ENABLED) {
+    // GitHub Pages 上没有后端，直接显示 mock 模式
+    dot.className = "w-2.5 h-2.5 rounded-full bg-mustard animate-pulse";
+    label.textContent = "Mock 模式（本地可接后端）";
+    return;
+  }
+  try {
+    const r = await fetch(`${API_BASE}/api/health`);
+    if (r.ok) {
+      dot.className = "w-2.5 h-2.5 rounded-full bg-mint animate-pulse";
+      label.textContent = "后端已就绪";
+    }
+  } catch(e){
+    dot.className = "w-2.5 h-2.5 rounded-full bg-coral";
+    label.textContent = "后端离线 · 可用 Demo";
+  }
+}
+
+function collectInput(){
+  return {
+    departure:   document.getElementById("departure").value.trim(),
+    destination: document.getElementById("destination").value.trim(),
+    dates:       document.getElementById("dates").value.trim(),
+    days:        parseInt(document.getElementById("days").value,10),
+    budget:      document.getElementById("budget").value.trim(),
+    companions:  document.getElementById("companions").value.trim(),
+    pace:        currentPace,
+    interests:   [...selectedInterests],
+    avoid:       document.getElementById("avoid").value.trim()
+                  ? document.getElementById("avoid").value.split(/[,，、\s]+/).filter(Boolean)
+                  : [],
+  };
+}
+
+async function generate(){
+  const btn = document.getElementById("genBtn");
+  btn.disabled = true;
+  btn.innerHTML = "⏳ 钉板中…";
+
+  setStep(4);
+
+  const msgs = ["正在理解你的 3 张便签","匹配景点 & 美食…","优化路线减少折返…","计算预算 & 交通…","生成注意事项清单…","搞定！"];
+  let i=0;
+  const status = document.getElementById("genStatus");
+  const timer = setInterval(()=>{ i=Math.min(i+1,msgs.length-1); status.textContent = msgs[i]; }, 900);
+
+  try {
+    const input = collectInput();
+    let plan;
+    if (!API_ENABLED) {
+      // 无后端时直接用本地模板（根据用户输入生成合理内容）
+      plan = buildFallback(input);
+    } else {
+      try {
+        const r = await fetch(`${API_BASE}/api/generate`,{
+          method:"POST",
+          headers:{"Content-Type":"application/json"},
+          body: JSON.stringify(input),
+        });
+        if (!r.ok) throw new Error("API "+r.status);
+        plan = await r.json();
+      } catch(e){
+        console.warn("API 失败，用 demo", e);
+        try {
+          const r2 = await fetch(`${API_BASE}/api/demo`);
+          plan = r2.ok ? await r2.json() : buildFallback(input);
+        } catch(e2){ plan = buildFallback(input); }
+      }
+    }
+    clearInterval(timer);
+    lastPlan = plan;
+    render(plan);
+
+    // 切换：隐藏表单，显示结果
+    document.getElementById("formArea").classList.add("hidden");
+    document.getElementById("resultArea").classList.remove("hidden");
+    document.getElementById("emptyHint").classList.add("hidden");
+    document.getElementById("previewHint").classList.remove("hidden");
+
+    setStep(5);
+    window.scrollTo({top:0, behavior:"smooth"});
+  } catch(e){
+    clearInterval(timer);
+    alert("生成失败：" + e.message);
+    setStep(3);
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = "✈️ 让 AI 钉好这张板";
+  }
+}
+
+function buildFallback(input){
+  return {
+    trip_summary: `${input.days} 天 ${input.destination} 漫游`,
+    estimated_total_cost: input.budget || "约 4000 元（2 人）",
+    best_transport: `建议从 ${input.departure} 高铁 / 飞机直达`,
+    accommodation_tip: `${input.destination} 推荐住市中心 / 地铁沿线`,
+    days: Array.from({length:input.days}).map((_,i)=>({
+      day:i+1, theme:`第 ${i+1} 天`,
+      items:[
+        {time:"09:00-12:00",title:"经典景点 A",type:"景点",location:`${input.destination} 市区`,duration:"3 小时",cost:"免费/¥50",tips:"上午人少好拍照"},
+        {time:"12:30-14:00",title:"本地特色午餐",type:"美食",cost:"¥80/人",tips:"找附近小区楼下的馆子"},
+        {time:"14:30-17:00",title:"周边景点 B",type:"景点",duration:"2.5 小时",cost:"¥100",tips:"预留时间拍照"},
+        {time:"18:00-20:00",title:"晚餐 + 夜景散步",type:"美食",cost:"¥120/人",tips:"吃完可以逛逛江边"},
+      ]})),
+    checklist:[
+      {category:"天气预报",title:`${input.destination} 天气`,content:"出发前查当地 7 日预报，按需带衣物"},
+      {category:"穿搭建议",title:"鞋子优先",content:"穿轻便运动鞋"},
+      {category:"交通出行",title:"市内交通",content:"推荐买当地地铁日卡"},
+      {category:"门票预订",title:"热门景点",content:"官微提前 1-2 天预约"},
+      {category:"避坑指南",title:"美食避坑",content:"网红店排队久，苍蝇馆子更地道"},
+    ],
+    generated_at: new Date().toLocaleString("zh-CN"),
+  };
+}
+
+// ---------------------------------------------------
+// render result
+// ---------------------------------------------------
+function render(p){
+  // banner
+  document.getElementById("r_summary").textContent = p.trip_summary || "";
+  document.getElementById("r_cost").textContent = p.estimated_total_cost || "";
+  document.getElementById("r_transport").textContent = p.best_transport || "";
+  document.getElementById("r_accommodation").textContent = p.accommodation_tip || "";
+  document.getElementById("r_time").textContent = p.generated_at || new Date().toLocaleString("zh-CN");
+
+  // days - 带路线圆点 + 连线
+  const daysBox = document.getElementById("daysContainer");
+  daysBox.innerHTML = (p.days||[]).map((day, di)=>{
+    const dotsSVG = (day.items||[]).map((it, idx)=>{
+      const c = TYPE_COLORS[it.type] || "#ff6b6b";
+      return `<circle cx="40" cy="${40 + idx*90}" r="8" fill="#0c1a2e" stroke="${c}" stroke-width="3"/>`;
+    }).join("");
+    const pathD = (day.items||[]).map((_,idx)=>(idx===0?"M":"L") + `40 ${40+idx*90}`).join(" ");
+    return `
+    <div class="card-dark overflow-hidden animate-slide-up" style="animation-delay:${di*0.12}s">
+      <div class="flex items-center gap-3 px-5 py-4 border-b border-white/5" style="background:linear-gradient(90deg,rgba(255,107,107,.15),transparent)">
+        <div class="w-11 h-11 rounded-xl bg-gradient-to-br from-coral to-pink flex items-center justify-center font-display font-black text-white shadow-lg">D${day.day}</div>
+        <div>
+          <div class="font-bold text-white">Day ${day.day}</div>
+          <div class="text-sm text-white/60 font-hand text-base">${day.theme||""}</div>
+        </div>
+      </div>
+      <div class="relative p-5 pl-16">
+        <!-- 左侧 SVG 路线 -->
+        <svg class="absolute left-5 top-3 route-svg draw" width="30" height="${Math.max(100,(day.items?.length||0)*90+20)}" style="animation-delay:${di*0.12+0.3}s">
+          <path d="${pathD}" stroke="#ffd93d" stroke-width="2" fill="none"/>
+          ${dotsSVG}
+        </svg>
+
+        <div class="space-y-5">
+          ${(day.items||[]).map((it, ii)=>{
+            const c = TYPE_COLORS[it.type] || "#ff6b6b";
+            return `
+            <div class="hover:translate-x-1 transition-transform duration-200" style="animation-delay:${ii*0.08}s">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="inline-block w-2 h-2 rounded-full" style="background:${c}"></span>
+                <span class="text-[11px] uppercase tracking-wider font-bold" style="color:${c}">${TYPE_ICONS[it.type]||"•"} ${it.type||""}</span>
+                <span class="text-xs text-white/30 ml-auto">${it.time||""}</span>
+              </div>
+              <div class="text-white font-semibold leading-tight">${it.title||""}</div>
+              <div class="text-xs text-white/50 flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                ${it.location?`<span>📍 ${it.location}</span>`:""}
+                ${it.duration?`<span>⏱ ${it.duration}</span>`:""}
+                ${it.cost?`<span class="text-mustard">💰 ${it.cost}</span>`:""}
+              </div>
+              ${it.tips?`<div class="mt-2 text-[12px] bg-sky/10 border-l-2 border-sky px-3 py-1.5 rounded-r-md text-white/80 leading-relaxed">💡 ${it.tips}</div>`:""}
+            </div>`;
+          }).join("")}
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+
+  // checklist 彩色分类
+  const catColor = { "天气预报":"#4d96ff","穿搭建议":"#ffd93d","交通出行":"#6bcb77","门票预订":"#ff6b6b","避坑指南":"#ff85a1" };
+  const catIcon  = { "天气预报":"🌤️","穿搭建议":"👕","交通出行":"🚇","门票预订":"🎫","避坑指南":"⚠️" };
+  document.getElementById("checklistGrid").innerHTML = (p.checklist||[]).map(c=>{
+    const col = catColor[c.category] || "#ff6b6b";
+    return `
+    <div class="rounded-xl p-4 border border-white/5 hover:border-white/15 transition-colors"
+         style="background:linear-gradient(135deg,${col}15,transparent)">
+      <div class="text-xs font-bold uppercase tracking-wider mb-1" style="color:${col}">
+        ${catIcon[c.category]||"📌"} ${c.category||""}
+      </div>
+      <div class="text-white font-semibold text-sm mb-1">${c.title||""}</div>
+      <div class="text-sm text-white/60 leading-relaxed">${c.content||""}</div>
+    </div>`;
+  }).join("");
+}
+
+function reset(){
+  lastPlan = null;
+  document.getElementById("resultArea").classList.add("hidden");
+  document.getElementById("formArea").classList.remove("hidden");
+  document.getElementById("pin5").querySelector(".w-9").className = "w-9 h-9 rounded-full flex items-center justify-center font-display font-bold text-ink bg-white/10 border-2 border-white/20 transition-all";
+  document.getElementById("pin5").querySelector(".w-9").textContent = "✓";
+  setStep(1);
+  // 重置 stub
+  ["stub1","stub2","stub3"].forEach(id=>document.getElementById(id)?.classList.add("hidden"));
+  document.getElementById("previewHint").classList.add("hidden");
+  document.getElementById("emptyHint").classList.remove("hidden");
+  window.scrollTo({top:0, behavior:"smooth"});
+}
+
+function downloadJSON(){
+  if (!lastPlan) return;
+  const blob = new Blob([JSON.stringify(lastPlan,null,2)],{type:"application/json"});
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = `trip-board-${new Date().toISOString().slice(0,10)}.json`;
+  a.click(); URL.revokeObjectURL(url);
+}
+</script>
+
+</body>
+</html>

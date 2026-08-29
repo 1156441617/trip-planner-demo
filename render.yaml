@@ -1,0 +1,21 @@
+"""
+Render.com 一键部署配置（免费层）
+--------------------------------
+把整个 repo 连到 Render.com，它会自动识别这个文件并部署后端。
+
+部署后，把 Render 给你的 URL（例如 https://trip-planner.onrender.com）
+填到前端 index.html 里的 API_BASE，就能用真实 LLM 了。
+"""
+
+services:
+  - name: trip-planner-api
+    type: web
+    runtime: python
+    plan: free
+    env: python3
+    region: singapore
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: cd backend && python -m uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: DEEPSEEK_API_KEY
+        sync: false   # Render 控制台手动填写（别把 key 提交到 GitHub）
