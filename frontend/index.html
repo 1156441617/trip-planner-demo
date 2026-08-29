@@ -989,7 +989,8 @@ function render(p){
             <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6l6-3 6 3 6-3v14l-6 3-6-3-6 3zM9 3v14M15 6v14"/></svg>
             路程图
           </div>
-          <div id="map-Day${day.day}" class="relative overflow-hidden rounded-lg border border-white/5" style="height:280px;background:#0a1525">
+          <div id="map-Day${day.day}" class="relative overflow-hidden rounded-lg border border-white/5 flex items-center justify-center" style="height:280px;background:#0a1525">
+            <div class="text-white/20 text-xs animate-pulse">🗺️ 地图加载中…</div>
           </div>
           <div class="mt-2 flex items-center justify-between text-[10px] text-white/30">
             <span>${items.length} 个站点</span>
@@ -1017,11 +1018,24 @@ function render(p){
   }).join("");
 
   // ===== 初始化高德地图 =====
-  if (typeof AMap !== "undefined" && p.days) {
-    p.days.forEach((day) => {
-      initDayMap(day);
-    });
+  console.log("[render] done, AMap typeof:", typeof AMap, "days:", p.days?.length);
+  if (p.days && p.days.length > 0) {
+    // 延迟确保 DOM 渲染 + SDK ready
+    setTimeout(() => {
+      if (typeof AMap === "undefined") {
+        console.warn("[map] AMap still not ready, retry in 500ms");
+        setTimeout(() => initMaps(p), 500);
+      } else {
+        initMaps(p);
+      }
+    }, 300);
   }
+}
+
+function initMaps(p) {
+  p.days.forEach((day) => {
+    initDayMap(day);
+  });
 }
 
 // 初始化单日地图
