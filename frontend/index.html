@@ -1074,10 +1074,11 @@ async function initDayMap(day) {
     zoomControl: false,
   });
 
-  // 深色瓦片层
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap © CARTO",
-    subdomains: "abcd",
+  // 高德瓦片层（中文地名 · 国内道路）
+  L.tileLayer("https://webrd0{s}.is.autonavi.com/appmaptile?lang=zh_cn&size=1&scale=1&style=8&x={x}&y={y}&z={z}", {
+    subdomains: ["1", "2", "3", "4"],
+    attribution: "© 高德地图",
+    maxZoom: 18,
   }).addTo(map);
 
   // 逐个 geocoding（Nominatim 限速，1 次/秒）
