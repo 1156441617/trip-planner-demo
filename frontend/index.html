@@ -1034,32 +1034,39 @@ async function initMaps(p) {
 
 // 地理编码：高德 REST API（国内）+ Nominatim（海外）fallback
 async function geocodeAddress(address) {
-  // 1. 先试高德 REST API（支持中国地址，速度快）
-  try {
-    const amapUrl = `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(address)}&key=5b3217284873669fc9c0a6ed2d791837&output=json`;
-    const res = await fetch(amapUrl);
-    const data = await res.json();
-    if (data.status === "1" && data.geocodes && data.geocodes[0]) {
-      const [lng, lat] = data.geocodes[0].location.split(",").map(parseFloat);
-      console.log(`  geocode(AMap): "${address}" → [${lat}, ${lng}]`);
-      return [lat, lng];
+  // 清理地址：去掉模糊词
+  const cleanAddr = address.replace(/附近|旁边|周边|大概|大约/g, "").trim();
+  const variants = [address, cleanAddr, cleanAddr.split(/[,，、]/)[0]];
+
+  for (const addr of variants) {
+    if (!addr || addr.length < 2) continue;
+    // 1. 高德 REST API
+    try {
+      const amapUrl = `https://restapi.amap.com/v3/geocode/geo?address=${encodeURIComponent(addr)}&key=5b3217284873669fc9c0a6ed2d791837&output=json`;
+      const res = await fetch(amapUrl);
+      const data = await res.json();
+      if (data.status === "1" && data.geocodes && data.geocodes[0]) {
+        const [lng, lat] = data.geocodes[0].location.split(",").map(parseFloat);
+        console.log(`  geocode(AMap): "${addr}" → [${lat}, ${lng}]`);
+        return [lat, lng];
+      }
+    } catch (e) {
+      console.warn(`  geocode(AMap) failed: "${addr}"`, e.message);
     }
-  } catch (e) {
-    console.warn(`  geocode(AMap) failed: "${address}"`, e.message);
-  }
-  // 2. Fallback: Nominatim（海外地址）
-  try {
-    const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(address)}&limit=1`;
-    const res2 = await fetch(nomUrl, { headers: { "Accept-Language": "zh,en" } });
-    const data2 = await res2.json();
-    if (data2 && data2[0]) {
-      const lat = parseFloat(data2[0].lat);
-      const lng = parseFloat(data2[0].lon);
-      console.log(`  geocode(Nominatim): "${address}" → [${lat}, ${lng}]`);
-      return [lat, lng];
+    // 2. Nominatim fallback
+    try {
+      const nomUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(addr)}&limit=1`;
+      const res2 = await fetch(nomUrl, { headers: { "Accept-Language": "zh,en" } });
+      const data2 = await res2.json();
+      if (data2 && data2[0]) {
+        const lat = parseFloat(data2[0].lat);
+        const lng = parseFloat(data2[0].lon);
+        console.log(`  geocode(Nominatim): "${addr}" → [${lat}, ${lng}]`);
+        return [lat, lng];
+      }
+    } catch (e) {
+      console.warn(`  geocode(Nominatim) failed: "${addr}"`, e.message);
     }
-  } catch (e) {
-    console.warn(`  geocode(Nominatim) failed: "${address}"`, e.message);
   }
   return null;
 }
@@ -1096,10 +1103,9 @@ async function initDayMap(day) {
     zoomControl: false,
   });
 
-  // 深色瓦片层（CARTO dark，支持 CORS）
-  L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png", {
-    attribution: "© OpenStreetMap © CARTO",
-    subdomains: "abcd",
+  // OpenStreetMap 标准瓦片（免费无 key，支持 CORS）
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "© OpenStreetMap",
     maxZoom: 18,
   }).addTo(map);
 
