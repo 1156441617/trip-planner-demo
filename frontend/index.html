@@ -1095,13 +1095,16 @@ async function initDayMap(day) {
     return;
   }
 
-  // 创建 Leaflet 地图（深色底图）
+  // 创建 Leaflet 地图
   const map = L.map(container, {
     zoom: 12,
     center: [39.90923, 116.397428],
     scrollWheelZoom: false,
     zoomControl: false,
   });
+
+  // 立即移除 loading 占位
+  container.querySelector(".animate-pulse")?.remove();
 
   // OpenStreetMap 标准瓦片（免费无 key，支持 CORS）
   L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
@@ -1151,7 +1154,11 @@ async function initDayMap(day) {
   console.log(`[Day${day.day}] geocoded ${points.length}/${locations.length} points`);
 
   if (points.length === 0) {
-    container.innerHTML = '<div class="flex items-center justify-center h-full text-white/20 text-xs">地点解析失败</div>';
+    // 不破坏地图，叠层提示
+    const tip = document.createElement("div");
+    tip.className = "absolute inset-0 flex items-center justify-center text-white/30 text-xs z-[500]";
+    tip.textContent = "地点解析失败，地图仅供参考";
+    container.appendChild(tip);
     return;
   }
 
@@ -1170,9 +1177,6 @@ async function initDayMap(day) {
   const group = L.featureGroup(points.map(p => L.marker(p.latlng)));
   map.fitBounds(group.getBounds(), { padding: [40, 40] });
   console.log(`[Day${day.day}] map ready, fitBounds done`);
-
-  // 清除 loading 占位
-  container.querySelector(".animate-pulse")?.remove();
 }
 
 function reset(){
